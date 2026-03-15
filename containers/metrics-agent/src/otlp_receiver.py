@@ -8,6 +8,10 @@ from opentelemetry.proto.collector.metrics.v1 import (
     metrics_service_pb2,
     metrics_service_pb2_grpc,
 )
+from opentelemetry.proto.collector.trace.v1 import (
+    trace_service_pb2,
+    trace_service_pb2_grpc,
+)
 from opentelemetry.proto.metrics.v1 import metrics_pb2
 
 from .metric_store import MetricEntry, MetricStore
@@ -103,11 +107,21 @@ class OTLPMetricsServicer(metrics_service_pb2_grpc.MetricsServiceServicer):
         self._store.upsert(entry)
 
 
+class OTLPTraceServicer(trace_service_pb2_grpc.TraceServiceServicer):
+    """Stub TraceService that accepts and discards trace exports."""
+
+    def Export(self, request, context):
+        return trace_service_pb2.ExportTraceServiceResponse()
+
+
 def start_otlp_receiver(store: MetricStore, port: int) -> grpc.Server:
-    """Start the gRPC OTLP metrics receiver server."""
+    """Start the gRPC OTLP metrics and trace receiver server."""
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
     metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
         OTLPMetricsServicer(store), server
+    )
+    trace_service_pb2_grpc.add_TraceServiceServicer_to_server(
+        OTLPTraceServicer(), server
     )
     server.add_insecure_port(f"0.0.0.0:{port}")
     server.start()

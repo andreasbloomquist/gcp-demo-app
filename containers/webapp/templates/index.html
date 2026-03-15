@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Serving Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; padding: 20px; }
+        h1 { text-align: center; margin-bottom: 24px; font-size: 1.8rem; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1100px; margin: 0 auto; }
+        .card { background: #fff; border-radius: 10px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .card.full-width { grid-column: 1 / -1; }
+        .card h2 { font-size: 1.2rem; margin-bottom: 16px; color: #16213e; border-bottom: 2px solid #e8e8e8; padding-bottom: 8px; }
+        label { display: block; font-weight: 500; margin-bottom: 4px; font-size: 0.9rem; }
+        textarea, input[type="text"], input[type="number"], select {
+            width: 100%; padding: 10px; border: 1px solid #d0d0d0; border-radius: 6px; font-size: 0.95rem; margin-bottom: 12px;
+        }
+        textarea { resize: vertical; min-height: 80px; }
+        button {
+            background: #0f3460; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 500;
+        }
+        button:hover { background: #1a4a8a; }
+        button:disabled { background: #999; cursor: not-allowed; }
+        .result { margin-top: 16px; padding: 14px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #0f3460; display: none; }
+        .result.show { display: block; }
+        .result.error { border-left-color: #e74c3c; background: #fdf0ef; }
+        .latency { color: #0f3460; font-weight: 600; font-size: 0.85rem; margin-top: 6px; }
+        .prediction-list { list-style: none; padding: 0; }
+        .prediction-list li { padding: 6px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+        .prediction-list li:last-child { border-bottom: none; }
+        .score { font-weight: 600; color: #0f3460; }
+        .load-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+        .load-form .field { flex: 1; min-width: 120px; }
+        .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; margin: 12px 0; overflow: hidden; display: none; }
+        .progress-bar.show { display: block; }
+        .progress-bar .fill { height: 100%; background: #0f3460; border-radius: 4px; transition: width 0.3s; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        th { font-weight: 600; color: #555; }
+        td.value { font-weight: 600; color: #0f3460; }
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #0f3460; border-radius: 50%; animation: spin 0.6s linear infinite; margin-left: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <h1>ML Serving Platform</h1>
+    <div class="grid">
+        <!-- Sentiment Analysis -->
+        <div class="card">
+            <h2>Sentiment Analysis (DistilBERT)</h2>
+            <label for="sentiment-text">Enter text:</label>
+            <textarea id="sentiment-text" placeholder="Type a sentence to analyze sentiment...">This movie was absolutely fantastic and I loved every moment of it!</textarea>
+            <button id="sentiment-btn" onclick="analyzeSentiment()">Analyze</button>
+            <div id="sentiment-result" class="result">
+                <div id="sentiment-output"></div>
+                <div id="sentiment-latency" class="latency"></div>
+            </div>
+        </div>
+
+        <!-- Image Classification -->
+        <div class="card">
+            <h2>Image Classification (ResNet-50)</h2>
+            <label for="image-url">Image URL:</label>
+            <input type="text" id="image-url" placeholder="Paste an image URL..." value="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/1200px-Cat_November_2010-1a.jpg">
+            <button id="classify-btn" onclick="classifyImage()">Classify</button>
+            <div id="classify-result" class="result">
+                <div id="classify-output"></div>
+                <div id="classify-latency" class="latency"></div>
+            </div>
+        </div>
+
+        <!-- Load Generator -->
+        <div class="card full-width">
+            <h2>Load Generator</h2>
+            <div class="load-form">
+                <div class="field">
+                    <label for="load-model">Model:</label>
+                    <select id="load-model">
+                        <option value="distilbert">DistilBERT (Sentiment)</option>
+                        <option value="resnet50">ResNet-50 (Image)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="load-requests">Requests:</label>
+                    <input type="number" id="load-requests" value="20" min="1" max="500">
+                </div>
+                <div class="field">
+                    <label for="load-concurrency">Concurrency:</label>
+                    <input type="number" id="load-concurrency" value="5" min="1" max="50">
+                </div>
+                <div class="field">
+                    <button id="load-btn" onclick="runLoadTest()">Run Load Test</button>
+                </div>
+            </div>
+            <div id="load-progress" class="progress-bar"><div class="fill" id="load-fill"></div></div>
+            <div id="load-result" class="result">
+                <table id="load-table">
+                    <thead>
+                        <tr><th>Metric</th><th>Value</th></tr>
+                    </thead>
+                    <tbody id="load-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function analyzeSentiment() {
+            const text = document.getElementById('sentiment-text').value.trim();
+            if (!text) return;
+
+            const btn = document.getElementById('sentiment-btn');
+            const result = document.getElementById('sentiment-result');
+            const output = document.getElementById('sentiment-output');
+            const latency = document.getElementById('sentiment-latency');
+
+            btn.disabled = true;
+            btn.innerHTML = 'Analyzing<span class="spinner"></span>';
+            result.className = 'result';
+
+            try {
+                const resp = await fetch('/api/sentiment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text})
+                });
+                const data = await resp.json();
+
+                if (data.error) {
+                    output.textContent = 'Error: ' + data.error;
+                    result.className = 'result show error';
+                } else {
+                    output.innerHTML = '<strong>' + data.label + '</strong> (confidence: ' + (data.score * 100).toFixed(1) + '%)';
+                    latency.textContent = 'Inference: ' + data.latency_ms + 'ms | Total: ' + data.total_latency_ms + 'ms';
+                    result.className = 'result show';
+                }
+            } catch (e) {
+                output.textContent = 'Error: ' + e.message;
+                result.className = 'result show error';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Analyze';
+        }
+
+        async function classifyImage() {
+            const imageUrl = document.getElementById('image-url').value.trim();
+            if (!imageUrl) return;
+
+            const btn = document.getElementById('classify-btn');
+            const result = document.getElementById('classify-result');
+            const output = document.getElementById('classify-output');
+            const latency = document.getElementById('classify-latency');
+
+            btn.disabled = true;
+            btn.innerHTML = 'Classifying<span class="spinner"></span>';
+            result.className = 'result';
+
+            try {
+                const resp = await fetch('/api/classify', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({image_url: imageUrl})
+                });
+                const data = await resp.json();
+
+                if (data.error) {
+                    output.textContent = 'Error: ' + data.error;
+                    result.className = 'result show error';
+                } else {
+                    let html = '<ul class="prediction-list">';
+                    data.predictions.forEach(p => {
+                        html += '<li><span>' + p.class_name + '</span><span class="score">' + (p.score * 100).toFixed(1) + '%</span></li>';
+                    });
+                    html += '</ul>';
+                    output.innerHTML = html;
+                    latency.textContent = 'Inference: ' + data.latency_ms + 'ms | Total: ' + data.total_latency_ms + 'ms';
+                    result.className = 'result show';
+                }
+            } catch (e) {
+                output.textContent = 'Error: ' + e.message;
+                result.className = 'result show error';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Classify';
+        }
+
+        async function runLoadTest() {
+            const model = document.getElementById('load-model').value;
+            const numRequests = parseInt(document.getElementById('load-requests').value);
+            const concurrency = parseInt(document.getElementById('load-concurrency').value);
+
+            const btn = document.getElementById('load-btn');
+            const progress = document.getElementById('load-progress');
+            const fill = document.getElementById('load-fill');
+            const result = document.getElementById('load-result');
+            const body = document.getElementById('load-body');
+
+            btn.disabled = true;
+            btn.innerHTML = 'Running<span class="spinner"></span>';
+            progress.className = 'progress-bar show';
+            fill.style.width = '30%';
+            result.className = 'result';
+
+            try {
+                fill.style.width = '60%';
+                const resp = await fetch('/api/load-test', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model, num_requests: numRequests, concurrency})
+                });
+                fill.style.width = '100%';
+                const data = await resp.json();
+
+                if (data.error) {
+                    body.innerHTML = '<tr><td colspan="2">Error: ' + data.error + '</td></tr>';
+                    result.className = 'result show error';
+                } else {
+                    body.innerHTML = [
+                        ['Total Requests', data.total_requests],
+                        ['Concurrency', data.concurrency],
+                        ['Errors', data.errors],
+                        ['Avg Latency', data.avg_latency_ms + ' ms'],
+                        ['P50 Latency', data.p50_latency_ms + ' ms'],
+                        ['P95 Latency', data.p95_latency_ms + ' ms'],
+                        ['P99 Latency', data.p99_latency_ms + ' ms'],
+                    ].map(([k, v]) => '<tr><td>' + k + '</td><td class="value">' + v + '</td></tr>').join('');
+                    result.className = 'result show';
+                }
+            } catch (e) {
+                body.innerHTML = '<tr><td colspan="2">Error: ' + e.message + '</td></tr>';
+                result.className = 'result show error';
+            }
+
+            setTimeout(() => { progress.className = 'progress-bar'; }, 1000);
+            btn.disabled = false;
+            btn.textContent = 'Run Load Test';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+services:
+  distilbert:
+    build: ./containers/distilbert
+    ports:
+      - "8001:8001"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://metrics-agent:4317
+      - OTEL_SERVICE_NAME=distilbert
+      - MODEL_CACHE_DIR=/models
+    volumes:
+      - distilbert-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    depends_on:
+      metrics-agent:
+        condition: service_started
+
+  resnet50:
+    build: ./containers/resnet50
+    ports:
+      - "8002:8002"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://metrics-agent:4317
+      - OTEL_SERVICE_NAME=resnet50
+      - MODEL_CACHE_DIR=/models
+    volumes:
+      - resnet50-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    depends_on:
+      metrics-agent:
+        condition: service_started
+
+  metrics-agent:
+    build: ./containers/metrics-agent
+    ports:
+      - "8080:8080"
+      - "4317:4317"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - INSTANCE_TYPE=n1-standard-8
+      - CLOUD_PROVIDER=gcp
+      - GPU_POLL_INTERVAL=5
+      - PROMETHEUS_PORT=8080
+      - OTLP_GRPC_PORT=4317
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    cap_add:
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      metrics-agent:
+        condition: service_started
+
+volumes:
+  distilbert-models:
+  resnet50-models:
+  prometheus-data:

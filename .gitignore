@@ -1,0 +1,54 @@
+# Terraform
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+crash.log
+
+# GCP / Secrets
+*.json
+!containers/**/package.json
+credentials/
+service-account*.json
+*-key.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Model weights (downloaded at runtime)
+*.bin
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Claude Code
+.claude/

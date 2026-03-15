@@ -1,0 +1,8 @@
+project_id          = "my-gcp-project-id"
+region              = "us-central1"
+zone                = "us-central1-a"
+machine_type        = "n1-standard-8"
+disk_size_gb        = 100
+gpu_type            = "nvidia-tesla-t4"
+repo_url            = "https://github.com/your-username/gcp-playground.git"
+webapp_machine_type = "e2-small"

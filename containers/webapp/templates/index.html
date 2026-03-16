@@ -41,10 +41,20 @@
         td.value { font-weight: 600; color: #0f3460; }
         .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #0f3460; border-radius: 50%; animation: spin 0.6s linear infinite; margin-left: 8px; vertical-align: middle; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        nav { background: #0f3460; padding: 0 20px; display: flex; align-items: center; margin: -20px -20px 20px -20px; }
+        nav a { color: #fff; text-decoration: none; padding: 14px 20px; font-size: 0.95rem; font-weight: 500; opacity: 0.8; transition: opacity 0.2s; }
+        nav a:hover, nav a.active { opacity: 1; border-bottom: 2px solid #fff; }
+        nav .nav-brand { font-weight: 700; font-size: 1.05rem; opacity: 1; margin-right: auto; border-bottom: none; }
+        nav .nav-brand:hover { border-bottom: none; }
         @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
+    <nav>
+        <a href="/" class="nav-brand">ML Platform</a>
+        <a href="/" class="active">Inference</a>
+        <a href="/dashboard">Dashboard</a>
+    </nav>
     <h1>ML Serving Platform</h1>
     <div class="grid">
         <!-- Sentiment Analysis -->
@@ -63,7 +73,7 @@
         <div class="card">
             <h2>Image Classification (ResNet-50)</h2>
             <label for="image-url">Image URL:</label>
-            <input type="text" id="image-url" placeholder="Paste an image URL..." value="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/1200px-Cat_November_2010-1a.jpg">
+            <input type="text" id="image-url" placeholder="Paste an image URL..." value="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png">
             <button id="classify-btn" onclick="classifyImage()">Classify</button>
             <div id="classify-result" class="result">
                 <div id="classify-output"></div>

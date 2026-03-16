@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Observability Dashboard — ML Serving Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+        /* Navigation */
+        nav { background: #0f3460; padding: 0 20px; display: flex; align-items: center; }
+        nav a { color: #fff; text-decoration: none; padding: 14px 20px; font-size: 0.95rem; font-weight: 500; opacity: 0.8; transition: opacity 0.2s; }
+        nav a:hover, nav a.active { opacity: 1; border-bottom: 2px solid #fff; }
+        nav .nav-brand { font-weight: 700; font-size: 1.05rem; opacity: 1; margin-right: auto; border-bottom: none; }
+        nav .nav-brand:hover { border-bottom: none; }
+
+        /* Controls bar */
+        .controls { display: flex; align-items: center; gap: 12px; padding: 16px 24px; background: #fff; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; }
+        .controls label { font-size: 0.85rem; font-weight: 600; color: #555; }
+        .time-btns { display: flex; gap: 4px; }
+        .time-btns button { background: #e8e8e8; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; color: #333; }
+        .time-btns button.active { background: #0f3460; color: #fff; }
+        .time-btns button:hover:not(.active) { background: #d0d0d0; }
+        .refresh-toggle { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .refresh-toggle button { background: #0f3460; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .refresh-toggle button.paused { background: #e74c3c; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; display: inline-block; }
+        .status-dot.paused { background: #e74c3c; }
+        .last-updated { font-size: 0.8rem; color: #888; }
+
+        /* Main content */
+        .dashboard { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+        .section-title { font-size: 1.1rem; font-weight: 700; color: #16213e; margin: 24px 0 12px 0; padding-bottom: 6px; border-bottom: 2px solid #e0e0e0; }
+        .section-title:first-child { margin-top: 0; }
+
+        /* Stat cards */
+        .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 8px; }
+        .stat-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 4px solid #ccc; }
+        .stat-card .label { font-size: 0.78rem; color: #777; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
+        .stat-card .value { font-size: 1.6rem; font-weight: 700; color: #1a1a2e; }
+        .stat-card .unit { font-size: 0.85rem; font-weight: 400; color: #888; }
+        .stat-card.green { border-left-color: #2ecc71; }
+        .stat-card.yellow { border-left-color: #f39c12; }
+        .stat-card.red { border-left-color: #e74c3c; }
+        .stat-card.info { border-left-color: #3498db; }
+
+        /* Chart grid */
+        .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .chart-card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .chart-card.full-width { grid-column: 1 / -1; }
+        .chart-card h3 { font-size: 0.95rem; color: #16213e; margin-bottom: 12px; }
+        .chart-card canvas { width: 100% !important; max-height: 280px; }
+        .chart-card .no-data { color: #aaa; font-size: 0.9rem; padding: 40px 0; text-align: center; }
+
+        /* System info table */
+        .info-table { width: 100%; border-collapse: collapse; }
+        .info-table th, .info-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        .info-table th { font-weight: 600; color: #555; background: #fafafa; }
+        .info-table td.val { font-weight: 600; color: #0f3460; }
+
+        @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) { .stat-cards { grid-template-columns: 1fr 1fr; } }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" class="nav-brand">ML Platform</a>
+        <a href="/">Inference</a>
+        <a href="/dashboard" class="active">Dashboard</a>
+    </nav>
+
+    <div class="controls">
+        <label>Time Range:</label>
+        <div class="time-btns" id="time-btns">
+            <button data-range="900" data-step="15">15m</button>
+            <button data-range="3600" data-step="30" class="active">1h</button>
+            <button data-range="21600" data-step="120">6h</button>
+            <button data-range="86400" data-step="300">24h</button>
+        </div>
+        <div class="refresh-toggle">
+            <span class="last-updated" id="last-updated"></span>
+            <span class="status-dot" id="status-dot"></span>
+            <button id="refresh-btn" onclick="toggleRefresh()">Pause</button>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- Section 1: Health Overview -->
+        <div class="section-title">Health Overview</div>
+        <div class="stat-cards" id="stat-cards">
+            <div class="stat-card" id="card-gpu-util">
+                <div class="label">GPU Utilization</div>
+                <div class="value">--<span class="unit">%</span></div>
+            </div>
+            <div class="stat-card" id="card-gpu-mem">
+                <div class="label">GPU Memory Used</div>
+                <div class="value">--<span class="unit"> MB</span></div>
+            </div>
+            <div class="stat-card" id="card-gpu-temp">
+                <div class="label">GPU Temperature</div>
+                <div class="value">--<span class="unit">°C</span></div>
+            </div>
+            <div class="stat-card" id="card-distilbert-p95">
+                <div class="label">DistilBERT P95</div>
+                <div class="value">--<span class="unit"> ms</span></div>
+            </div>
+            <div class="stat-card" id="card-resnet-p95">
+                <div class="label">ResNet-50 P95</div>
+                <div class="value">--<span class="unit"> ms</span></div>
+            </div>
+            <div class="stat-card info" id="card-req-rate">
+                <div class="label">Request Rate</div>
+                <div class="value">--<span class="unit"> req/s</span></div>
+            </div>
+            <div class="stat-card green" id="card-error-rate">
+                <div class="label">Error Rate</div>
+                <div class="value">--<span class="unit"> err/s</span></div>
+            </div>
+        </div>
+
+        <!-- Section 2: Inference Performance -->
+        <div class="section-title">Inference Performance</div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>DistilBERT Latency (P50 / P95 / P99)</h3>
+                <canvas id="chart-distilbert-latency"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>ResNet-50 Latency (P50 / P95 / P99)</h3>
+                <canvas id="chart-resnet-latency"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Request Rate by Model</h3>
+                <canvas id="chart-request-rate"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Error Rate by Model</h3>
+                <canvas id="chart-error-rate"></canvas>
+            </div>
+        </div>
+
+        <!-- Section 3: GPU Utilization -->
+        <div class="section-title">GPU Utilization</div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>GPU Core & Memory Utilization (%)</h3>
+                <canvas id="chart-gpu-util"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>GPU Profiling (SM / Tensor / DRAM Activity)</h3>
+                <canvas id="chart-gpu-profiling"></canvas>
+            </div>
+        </div>
+
+        <!-- Section 4: GPU Hardware -->
+        <div class="section-title">GPU Hardware</div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>Temperature & Power</h3>
+                <canvas id="chart-temp-power"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>GPU Memory Usage (MB)</h3>
+                <canvas id="chart-gpu-mem"></canvas>
+            </div>
+        </div>
+
+        <!-- Section 5: System Info -->
+        <div class="section-title">System Info</div>
+        <div class="chart-grid">
+            <div class="chart-card full-width">
+                <table class="info-table" id="system-info-table">
+                    <thead><tr><th>Metric</th><th>Container</th><th>Value</th></tr></thead>
+                    <tbody id="system-info-body">
+                        <tr><td colspan="3" style="color:#aaa; text-align:center;">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ── State ──
+    let refreshInterval = null;
+    let refreshPaused = false;
+    let currentRange = 3600;
+    let currentStep = 30;
+    const charts = {};
+
+    // ── Prometheus helpers ──
+    async function queryPrometheus(query) {
+        const params = new URLSearchParams({ query });
+        const resp = await fetch('/api/prometheus/query?' + params);
+        return resp.json();
+    }
+
+    async function queryPrometheusRange(query, start, end, step) {
+        const params = new URLSearchParams({
+            query,
+            start: start.toString(),
+            end: end.toString(),
+            step: step.toString()
+        });
+        const resp = await fetch('/api/prometheus/query_range?' + params);
+        return resp.json();
+    }
+
+    function getResultValue(data) {
+        if (data && data.status === 'success' && data.data && data.data.result && data.data.result.length > 0) {
+            return parseFloat(data.data.result[0].value[1]);
+        }
+        return null;
+    }
+
+    function getRangeResults(data) {
+        if (data && data.status === 'success' && data.data && data.data.result) {
+            return data.data.result;
+        }
+        return [];
+    }
+
+    function tsToLabel(ts) {
+        const d = new Date(ts * 1000);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // ── Stat cards ──
+    function setCard(id, value, unit, thresholds) {
+        const card = document.getElementById(id);
+        const valEl = card.querySelector('.value');
+        if (value === null || isNaN(value)) {
+            valEl.innerHTML = '--<span class="unit">' + unit + '</span>';
+            card.className = 'stat-card';
+            return;
+        }
+        const display = Number.isInteger(value) ? value : value.toFixed(1);
+        valEl.innerHTML = display + '<span class="unit">' + unit + '</span>';
+
+        if (!thresholds) {
+            card.className = 'stat-card info';
+            return;
+        }
+        const [yellowThresh, redThresh] = thresholds;
+        if (value > redThresh) card.className = 'stat-card red';
+        else if (value > yellowThresh) card.className = 'stat-card yellow';
+        else card.className = 'stat-card green';
+    }
+
+    async function updateStatCards() {
+        const queries = {
+            gpuUtil: 'gpu_gpu_utilization',
+            gpuMem: 'gpu_memory_used',
+            gpuTemp: 'gpu_temp',
+            distilbertP95: 'histogram_quantile(0.95, rate(ml_inference_latency_bucket{container="distilbert"}[5m]))',
+            resnetP95: 'histogram_quantile(0.95, rate(ml_inference_latency_bucket{container="resnet50"}[5m]))',
+            reqRate: 'sum(rate(ml_inference_request_count_total[5m]))',
+            errorRate: 'sum(rate(ml_inference_error_count_total[5m]))'
+        };
+
+        const results = await Promise.allSettled(
+            Object.values(queries).map(q => queryPrometheus(q))
+        );
+
+        const vals = {};
+        const keys = Object.keys(queries);
+        results.forEach((r, i) => {
+            vals[keys[i]] = r.status === 'fulfilled' ? getResultValue(r.value) : null;
+        });
+
+        setCard('card-gpu-util', vals.gpuUtil, '%', [70, 90]);
+
+        // GPU memory: threshold based on percentage of 16384 MB (L4 VRAM)
+        const memPct = vals.gpuMem !== null ? (vals.gpuMem / 16384) * 100 : null;
+        setCard('card-gpu-mem', vals.gpuMem !== null ? Math.round(vals.gpuMem) : null, ' MB', memPct !== null ? [16384 * 0.80, 16384 * 0.95] : null);
+
+        setCard('card-gpu-temp', vals.gpuTemp, '°C', [70, 85]);
+
+        // Latencies come in seconds from Prometheus, convert to ms
+        const distilP95ms = vals.distilbertP95 !== null ? vals.distilbertP95 * 1000 : null;
+        setCard('card-distilbert-p95', distilP95ms, ' ms', [500, 1000]);
+
+        const resnetP95ms = vals.resnetP95 !== null ? vals.resnetP95 * 1000 : null;
+        setCard('card-resnet-p95', resnetP95ms, ' ms', [1000, 3000]);
+
+        const rr = vals.reqRate !== null ? vals.reqRate : null;
+        setCard('card-req-rate', rr, ' req/s', null);
+
+        const er = vals.errorRate !== null ? vals.errorRate : null;
+        setCard('card-error-rate', er, ' err/s', [0.01, 0.1]);
+    }
+
+    // ── Chart creation ──
+    const COLORS = {
+        blue: 'rgba(52, 152, 219, 1)',
+        blueFill: 'rgba(52, 152, 219, 0.15)',
+        orange: 'rgba(243, 156, 18, 1)',
+        red: 'rgba(231, 76, 60, 1)',
+        green: 'rgba(46, 204, 113, 1)',
+        purple: 'rgba(155, 89, 182, 1)',
+        teal: 'rgba(26, 188, 156, 1)',
+        grey: 'rgba(149, 165, 166, 1)',
+    };
+
+    function createLineChart(canvasId, datasets, yLabel, opts = {}) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        if (charts[canvasId]) charts[canvasId].destroy();
+
+        const scales = {
+            x: { ticks: { maxTicksLimit: 10, font: { size: 11 } }, grid: { color: '#f0f0f0' } },
+            y: {
+                title: { display: true, text: yLabel, font: { size: 12 } },
+                ticks: { font: { size: 11 } },
+                grid: { color: '#f0f0f0' },
+                beginAtZero: true
+            }
+        };
+
+        if (opts.rightAxis) {
+            scales.y1 = {
+                position: 'right',
+                title: { display: true, text: opts.rightAxisLabel || '', font: { size: 12 } },
+                ticks: { font: { size: 11 } },
+                grid: { drawOnChartArea: false },
+                beginAtZero: true
+            };
+        }
+
+        charts[canvasId] = new Chart(ctx, {
+            type: opts.type || 'line',
+            data: { labels: [], datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+                scales,
+                elements: { point: { radius: 0 }, line: { tension: 0.3, borderWidth: 2 } }
+            }
+        });
+        return charts[canvasId];
+    }
+
+    function initCharts() {
+        // DistilBERT latency
+        createLineChart('chart-distilbert-latency', [
+            { label: 'P50', borderColor: COLORS.blue, backgroundColor: 'transparent', data: [] },
+            { label: 'P95', borderColor: COLORS.orange, backgroundColor: 'transparent', data: [] },
+            { label: 'P99', borderColor: COLORS.red, backgroundColor: 'transparent', data: [] },
+        ], 'Latency (ms)');
+
+        // ResNet-50 latency
+        createLineChart('chart-resnet-latency', [
+            { label: 'P50', borderColor: COLORS.blue, backgroundColor: 'transparent', data: [] },
+            { label: 'P95', borderColor: COLORS.orange, backgroundColor: 'transparent', data: [] },
+            { label: 'P99', borderColor: COLORS.red, backgroundColor: 'transparent', data: [] },
+        ], 'Latency (ms)');
+
+        // Request rate
+        createLineChart('chart-request-rate', [
+            { label: 'DistilBERT', borderColor: COLORS.blue, backgroundColor: 'transparent', data: [] },
+            { label: 'ResNet-50', borderColor: COLORS.orange, backgroundColor: 'transparent', data: [] },
+        ], 'Requests/sec');
+
+        // Error rate
+        createLineChart('chart-error-rate', [
+            { label: 'DistilBERT', borderColor: COLORS.blue, backgroundColor: 'transparent', data: [] },
+            { label: 'ResNet-50', borderColor: COLORS.orange, backgroundColor: 'transparent', data: [] },
+        ], 'Errors/sec');
+
+        // GPU core & memory utilization
+        createLineChart('chart-gpu-util', [
+            { label: 'GPU Utilization', borderColor: COLORS.blue, backgroundColor: 'transparent', data: [] },
+            { label: 'Memory Utilization', borderColor: COLORS.orange, backgroundColor: 'transparent', data: [] },
+        ], 'Utilization (%)');
+
+        // GPU profiling
+        createLineChart('chart-gpu-profiling', [
+            { label: 'SM Activity', borderColor: COLORS.blue, backgroundColor: 'transparent', data: [] },
+            { label: 'Tensor Active', borderColor: COLORS.green, backgroundColor: 'transparent', data: [] },
+            { label: 'DRAM Active', borderColor: COLORS.purple, backgroundColor: 'transparent', data: [] },
+        ], 'Activity (%)');
+
+        // Temperature & Power (dual axis)
+        createLineChart('chart-temp-power', [
+            { label: 'Temperature (°C)', borderColor: COLORS.red, backgroundColor: 'transparent', data: [], yAxisID: 'y' },
+            { label: 'Power (W)', borderColor: COLORS.blue, backgroundColor: 'transparent', data: [], yAxisID: 'y1' },
+        ], 'Temperature (°C)', { rightAxis: true, rightAxisLabel: 'Power (W)' });
+
+        // GPU memory usage (area chart)
+        createLineChart('chart-gpu-mem', [
+            { label: 'Memory Used', borderColor: COLORS.blue, backgroundColor: COLORS.blueFill, fill: true, data: [] },
+            { label: 'Total VRAM (16384 MB)', borderColor: COLORS.grey, backgroundColor: 'transparent', borderDash: [6, 4], data: [], pointRadius: 0 },
+        ], 'Memory (MB)');
+    }
+
+    function updateChartData(chartId, labels, datasetsData) {
+        const chart = charts[chartId];
+        if (!chart) return;
+        chart.data.labels = labels;
+        datasetsData.forEach((data, i) => {
+            if (chart.data.datasets[i]) chart.data.datasets[i].data = data;
+        });
+        chart.update('none');
+    }
+
+    // ── Chart data fetching ──
+    async function updateCharts() {
+        const now = Math.floor(Date.now() / 1000);
+        const start = now - currentRange;
+        const step = currentStep;
+
+        // Build all range queries
+        const rangeQueries = {
+            // Inference latency - DistilBERT
+            distilP50: `histogram_quantile(0.50, rate(ml_inference_latency_bucket{container="distilbert"}[5m]))`,
+            distilP95: `histogram_quantile(0.95, rate(ml_inference_latency_bucket{container="distilbert"}[5m]))`,
+            distilP99: `histogram_quantile(0.99, rate(ml_inference_latency_bucket{container="distilbert"}[5m]))`,
+            // Inference latency - ResNet-50
+            resnetP50: `histogram_quantile(0.50, rate(ml_inference_latency_bucket{container="resnet50"}[5m]))`,
+            resnetP95: `histogram_quantile(0.95, rate(ml_inference_latency_bucket{container="resnet50"}[5m]))`,
+            resnetP99: `histogram_quantile(0.99, rate(ml_inference_latency_bucket{container="resnet50"}[5m]))`,
+            // Request rates
+            distilRate: `rate(ml_inference_request_count_total{container="distilbert"}[5m])`,
+            resnetRate: `rate(ml_inference_request_count_total{container="resnet50"}[5m])`,
+            // Error rates
+            distilErrors: `rate(ml_inference_error_count_total{container="distilbert"}[5m])`,
+            resnetErrors: `rate(ml_inference_error_count_total{container="resnet50"}[5m])`,
+            // GPU utilization
+            gpuUtil: 'gpu_gpu_utilization',
+            gpuMemUtil: 'gpu_memory_utilization',
+            // GPU profiling
+            smActivity: 'gpu_sm_activity',
+            tensorActive: 'gpu_tensor_active',
+            dramActive: 'gpu_dram_active',
+            // Hardware
+            gpuTemp: 'gpu_temp',
+            gpuPower: 'gpu_power',
+            gpuMemUsed: 'gpu_memory_used',
+        };
+
+        const keys = Object.keys(rangeQueries);
+        const results = await Promise.allSettled(
+            Object.values(rangeQueries).map(q => queryPrometheusRange(q, start, now, step))
+        );
+
+        const data = {};
+        keys.forEach((key, i) => {
+            const res = results[i];
+            if (res.status === 'fulfilled') {
+                const series = getRangeResults(res.value);
+                if (series.length > 0) {
+                    data[key] = {
+                        timestamps: series[0].values.map(v => tsToLabel(v[0])),
+                        values: series[0].values.map(v => parseFloat(v[1]))
+                    };
+                }
+            }
+        });
+
+        // Helper: convert seconds to ms for latency data
+        const toMs = (arr) => arr ? arr.map(v => v * 1000) : [];
+        const emptyTs = () => [];
+
+        // DistilBERT latency
+        const distilLabels = data.distilP50 ? data.distilP50.timestamps : (data.distilP95 ? data.distilP95.timestamps : emptyTs());
+        updateChartData('chart-distilbert-latency', distilLabels, [
+            toMs(data.distilP50 ? data.distilP50.values : []),
+            toMs(data.distilP95 ? data.distilP95.values : []),
+            toMs(data.distilP99 ? data.distilP99.values : []),
+        ]);
+
+        // ResNet-50 latency
+        const resnetLabels = data.resnetP50 ? data.resnetP50.timestamps : (data.resnetP95 ? data.resnetP95.timestamps : emptyTs());
+        updateChartData('chart-resnet-latency', resnetLabels, [
+            toMs(data.resnetP50 ? data.resnetP50.values : []),
+            toMs(data.resnetP95 ? data.resnetP95.values : []),
+            toMs(data.resnetP99 ? data.resnetP99.values : []),
+        ]);
+
+        // Request rate
+        const rateLabels = data.distilRate ? data.distilRate.timestamps : (data.resnetRate ? data.resnetRate.timestamps : emptyTs());
+        updateChartData('chart-request-rate', rateLabels, [
+            data.distilRate ? data.distilRate.values : [],
+            data.resnetRate ? data.resnetRate.values : [],
+        ]);
+
+        // Error rate
+        const errorLabels = data.distilErrors ? data.distilErrors.timestamps : (data.resnetErrors ? data.resnetErrors.timestamps : emptyTs());
+        updateChartData('chart-error-rate', errorLabels, [
+            data.distilErrors ? data.distilErrors.values : [],
+            data.resnetErrors ? data.resnetErrors.values : [],
+        ]);
+
+        // GPU utilization
+        const gpuUtilLabels = data.gpuUtil ? data.gpuUtil.timestamps : (data.gpuMemUtil ? data.gpuMemUtil.timestamps : emptyTs());
+        updateChartData('chart-gpu-util', gpuUtilLabels, [
+            data.gpuUtil ? data.gpuUtil.values : [],
+            data.gpuMemUtil ? data.gpuMemUtil.values : [],
+        ]);
+
+        // GPU profiling
+        const profLabels = data.smActivity ? data.smActivity.timestamps : (data.tensorActive ? data.tensorActive.timestamps : emptyTs());
+        updateChartData('chart-gpu-profiling', profLabels, [
+            data.smActivity ? data.smActivity.values : [],
+            data.tensorActive ? data.tensorActive.values : [],
+            data.dramActive ? data.dramActive.values : [],
+        ]);
+
+        // Temperature & power
+        const tempLabels = data.gpuTemp ? data.gpuTemp.timestamps : (data.gpuPower ? data.gpuPower.timestamps : emptyTs());
+        updateChartData('chart-temp-power', tempLabels, [
+            data.gpuTemp ? data.gpuTemp.values : [],
+            data.gpuPower ? data.gpuPower.values : [],
+        ]);
+
+        // GPU memory usage (area + reference line)
+        const memLabels = data.gpuMemUsed ? data.gpuMemUsed.timestamps : emptyTs();
+        const totalLine = data.gpuMemUsed ? data.gpuMemUsed.values.map(() => 16384) : [];
+        updateChartData('chart-gpu-mem', memLabels, [
+            data.gpuMemUsed ? data.gpuMemUsed.values : [],
+            totalLine,
+        ]);
+    }
+
+    // ── System info ──
+    async function updateSystemInfo() {
+        try {
+            const data = await queryPrometheus('ml_model_load_time');
+            const results = getRangeResults(data);
+            const tbody = document.getElementById('system-info-body');
+
+            if (results.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="color:#aaa; text-align:center;">No system info available</td></tr>';
+                return;
+            }
+
+            let rows = '';
+            results.forEach(r => {
+                const container = r.metric.container || r.metric.job || 'unknown';
+                const val = parseFloat(r.value[1]).toFixed(2);
+                rows += `<tr><td>Model Load Time</td><td>${container}</td><td class="val">${val} s</td></tr>`;
+            });
+            tbody.innerHTML = rows;
+        } catch {
+            // Ignore errors for system info
+        }
+    }
+
+    // ── Refresh loop ──
+    async function refreshAll() {
+        try {
+            await Promise.allSettled([updateStatCards(), updateCharts(), updateSystemInfo()]);
+            document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+        } catch {
+            // Silently handle refresh errors
+        }
+    }
+
+    function startRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(() => {
+            if (!refreshPaused) refreshAll();
+        }, 15000);
+    }
+
+    function toggleRefresh() {
+        refreshPaused = !refreshPaused;
+        const btn = document.getElementById('refresh-btn');
+        const dot = document.getElementById('status-dot');
+        btn.textContent = refreshPaused ? 'Resume' : 'Pause';
+        btn.className = refreshPaused ? 'paused' : '';
+        dot.className = refreshPaused ? 'status-dot paused' : 'status-dot';
+    }
+
+    // ── Time range selector ──
+    document.getElementById('time-btns').addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') return;
+        document.querySelectorAll('#time-btns button').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        currentRange = parseInt(e.target.dataset.range);
+        currentStep = parseInt(e.target.dataset.step);
+        refreshAll();
+    });
+
+    // ── Init ──
+    initCharts();
+    refreshAll();
+    startRefresh();
+    </script>
+</body>
+</html>

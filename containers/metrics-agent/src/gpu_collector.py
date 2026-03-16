@@ -79,7 +79,10 @@ class GPUCollector:
             self._dcgm_field_group = field_group
 
             # Set up watches
-            dcgm_system.introspect.state.toggle(dcgm_structs.DCGM_INTROSPECT_STATE.ENABLED)
+            try:
+                dcgm_system.introspect.state.toggle(dcgm_structs.DCGM_INTROSPECT_STATE.ENABLED)
+            except (AttributeError, dcgm_structs.DCGMError):
+                logger.debug("DCGM introspect toggle not available, skipping")
             group.samples.WatchFields(
                 field_group,
                 updateFreq=self._poll_interval * 1000000,  # microseconds

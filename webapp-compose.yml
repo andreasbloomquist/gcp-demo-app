@@ -2,7 +2,7 @@ services:
   webapp:
     build: ./containers/webapp
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       - GPU_VM_IP=${GPU_VM_IP}
     restart: unless-stopped

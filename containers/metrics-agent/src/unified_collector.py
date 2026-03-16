@@ -15,6 +15,11 @@ from .metric_store import MetricStore
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_label_name(name: str) -> str:
+    """Convert OTel attribute keys (e.g. 'http.method') to valid Prometheus label names."""
+    return name.replace(".", "_").replace("-", "_")
+
+
 class UnifiedCollector:
     """Prometheus Collector that yields GPU + app metrics on each scrape."""
 
@@ -64,7 +69,7 @@ class UnifiedCollector:
 
     def _emit_counter(self, entry, common_label_names, common_label_values):
         for dp in entry.data_points:
-            label_names = common_label_names + ["container"] + list(dp["attributes"].keys())
+            label_names = common_label_names + ["container"] + [_sanitize_label_name(k) for k in dp["attributes"].keys()]
             c = CounterMetricFamily(
                 entry.name.replace(".", "_"),
                 entry.description or entry.name,
@@ -76,7 +81,7 @@ class UnifiedCollector:
 
     def _emit_gauge(self, entry, common_label_names, common_label_values):
         for dp in entry.data_points:
-            label_names = common_label_names + ["container"] + list(dp["attributes"].keys())
+            label_names = common_label_names + ["container"] + [_sanitize_label_name(k) for k in dp["attributes"].keys()]
             g = GaugeMetricFamily(
                 entry.name.replace(".", "_"),
                 entry.description or entry.name,
@@ -88,7 +93,7 @@ class UnifiedCollector:
 
     def _emit_histogram(self, entry, common_label_names, common_label_values):
         for dp in entry.data_points:
-            label_names = common_label_names + ["container"] + list(dp["attributes"].keys())
+            label_names = common_label_names + ["container"] + [_sanitize_label_name(k) for k in dp["attributes"].keys()]
             h = HistogramMetricFamily(
                 entry.name.replace(".", "_"),
                 entry.description or entry.name,

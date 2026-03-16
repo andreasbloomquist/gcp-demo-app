@@ -10,11 +10,41 @@ app = Flask(__name__)
 GPU_VM_IP = os.environ.get("GPU_VM_IP", "localhost")
 DISTILBERT_URL = f"http://{GPU_VM_IP}:8001"
 RESNET50_URL = f"http://{GPU_VM_IP}:8002"
+PROMETHEUS_URL = f"http://{GPU_VM_IP}:9090"
 
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/dashboard")
+def dashboard():
+    return render_template("dashboard.html")
+
+
+@app.route("/api/prometheus/query")
+def prometheus_query():
+    params = request.args.to_dict()
+    try:
+        resp = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/query", params=params, timeout=10
+        )
+        return jsonify(resp.json())
+    except requests.RequestException as e:
+        return jsonify({"status": "error", "error": str(e)}), 502
+
+
+@app.route("/api/prometheus/query_range")
+def prometheus_query_range():
+    params = request.args.to_dict()
+    try:
+        resp = requests.get(
+            f"{PROMETHEUS_URL}/api/v1/query_range", params=params, timeout=10
+        )
+        return jsonify(resp.json())
+    except requests.RequestException as e:
+        return jsonify({"status": "error", "error": str(e)}), 502
 
 
 @app.route("/api/sentiment", methods=["POST"])
@@ -96,7 +126,7 @@ def load_test():
         payload = {"text": "This is a test sentence for load testing the sentiment analysis model."}
     else:
         endpoint = f"{RESNET50_URL}/predict"
-        payload = {"image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/1200px-Cat_November_2010-1a.jpg"}
+        payload = {"image_url": "https://images.pexels.com/photos/45201/kitty-cat-kitten-pet-45201.jpeg?auto=compress&cs=tinysrgb&w=400"}
 
     results = []
     with ThreadPoolExecutor(max_workers=concurrency) as executor:

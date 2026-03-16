@@ -56,6 +56,10 @@ def setup_telemetry(app) -> tuple:
         name="ml.inference.request_count",
         description="Total inference requests",
     )
+    error_counter = meter.create_counter(
+        name="ml.inference.error_count",
+        description="Total inference errors",
+    )
     meter.create_observable_gauge(
         name="ml.model.load_time",
         description="Time taken to load the model in seconds",
@@ -66,4 +70,4 @@ def setup_telemetry(app) -> tuple:
     # Auto-instrument FastAPI
     FastAPIInstrumentor.instrument_app(app)
 
-    return inference_latency, request_counter, tracer
+    return inference_latency, request_counter, error_counter, tracer

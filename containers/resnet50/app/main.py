@@ -13,7 +13,7 @@ from telemetry import set_model_load_time, setup_telemetry
 
 app = FastAPI(title="ResNet-50 Image Classification")
 
-inference_latency, request_counter, tracer = setup_telemetry(app)
+inference_latency, request_counter, error_counter, tracer = setup_telemetry(app)
 
 
 class PredictRequest(BaseModel):
@@ -64,8 +64,10 @@ async def predict(request: PredictRequest):
 
             results = await asyncio.to_thread(model.predict, image)
         except httpx.HTTPError as e:
+            error_counter.add(1, {"model": "resnet50", "error_type": "ImageFetchError"})
             raise HTTPException(status_code=400, detail=f"Failed to fetch image: {e}")
         except Exception as e:
+            error_counter.add(1, {"model": "resnet50", "error_type": type(e).__name__})
             raise HTTPException(status_code=500, detail=str(e))
 
         latency = time.time() - start

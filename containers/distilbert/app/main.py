@@ -8,7 +8,7 @@ from telemetry import set_model_load_time, setup_telemetry
 
 app = FastAPI(title="DistilBERT Sentiment Analysis")
 
-inference_latency, request_counter, tracer = setup_telemetry(app)
+inference_latency, request_counter, error_counter, tracer = setup_telemetry(app)
 
 
 class PredictRequest(BaseModel):
@@ -40,6 +40,7 @@ def predict(request: PredictRequest):
         try:
             result = model.predict(request.text)
         except Exception as e:
+            error_counter.add(1, {"model": "distilbert", "error_type": type(e).__name__})
             raise HTTPException(status_code=500, detail=str(e))
         latency = time.time() - start
         inference_latency.record(latency, {"model": "distilbert"})

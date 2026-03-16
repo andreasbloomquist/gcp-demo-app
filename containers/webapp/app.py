@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from flask import Flask, jsonify, render_template, request
 
+from insights import generate_insights
+
 app = Flask(__name__)
 
 GPU_VM_IP = os.environ.get("GPU_VM_IP", "localhost")
@@ -45,6 +47,17 @@ def prometheus_query_range():
         return jsonify(resp.json())
     except requests.RequestException as e:
         return jsonify({"status": "error", "error": str(e)}), 502
+
+
+@app.route("/api/insights")
+def insights():
+    range_seconds = int(request.args.get("range", 3600))
+    step = int(request.args.get("step", 30))
+    try:
+        result = generate_insights(range_seconds, step)
+        return jsonify({"status": "ok", "count": len(result), "insights": result})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e), "count": 0, "insights": []}), 500
 
 
 @app.route("/api/sentiment", methods=["POST"])

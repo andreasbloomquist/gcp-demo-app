@@ -60,6 +60,22 @@
         .info-table th { font-weight: 600; color: #555; background: #fafafa; }
         .info-table td.val { font-weight: 600; color: #0f3460; }
 
+        /* Insight cards */
+        .insights-panel { margin-bottom: 8px; }
+        .insight-card { background: #fff; border-radius: 8px; padding: 14px 18px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-left: 4px solid #ccc; }
+        .insight-card.critical { border-left-color: #e74c3c; }
+        .insight-card.warning { border-left-color: #f39c12; }
+        .insight-card.info { border-left-color: #3498db; }
+        .insight-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+        .insight-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #fff; }
+        .insight-badge.critical { background: #e74c3c; }
+        .insight-badge.warning { background: #f39c12; }
+        .insight-badge.info { background: #3498db; }
+        .insight-title { font-size: 0.92rem; font-weight: 600; color: #16213e; }
+        .insight-desc { font-size: 0.85rem; color: #444; line-height: 1.45; margin-bottom: 6px; }
+        .insight-meta { font-size: 0.75rem; color: #999; }
+        .insights-empty { background: #fff; border-radius: 8px; padding: 20px; text-align: center; color: #aaa; font-size: 0.9rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+
         @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
         @media (max-width: 600px) { .stat-cards { grid-template-columns: 1fr 1fr; } }
     </style>
@@ -87,6 +103,12 @@
     </div>
 
     <div class="dashboard">
+        <!-- Section 0: Automated Insights -->
+        <div class="section-title">Automated Insights</div>
+        <div class="insights-panel" id="insights-panel">
+            <div class="insights-empty">Loading insights...</div>
+        </div>
+
         <!-- Section 1: Health Overview -->
         <div class="section-title">Health Overview</div>
         <div class="stat-cards" id="stat-cards">
@@ -548,10 +570,38 @@
         }
     }
 
+    // ── Insights panel ──
+    async function updateInsights() {
+        try {
+            const params = new URLSearchParams({ range: currentRange, step: currentStep });
+            const resp = await fetch('/api/insights?' + params);
+            const data = await resp.json();
+            const panel = document.getElementById('insights-panel');
+
+            if (!data.insights || data.insights.length === 0) {
+                panel.innerHTML = '<div class="insights-empty">No insights — all metrics look normal.</div>';
+                return;
+            }
+
+            panel.innerHTML = data.insights.map(i => `
+                <div class="insight-card ${i.severity}">
+                    <div class="insight-header">
+                        <span class="insight-badge ${i.severity}">${i.severity}</span>
+                        <span class="insight-title">${i.title}</span>
+                    </div>
+                    <div class="insight-desc">${i.description}</div>
+                    <div class="insight-meta">${i.category} · ${i.metric}${i.current_value !== null ? ' · current: ' + i.current_value : ''}</div>
+                </div>
+            `).join('');
+        } catch {
+            // Silently handle insight fetch errors
+        }
+    }
+
     // ── Refresh loop ──
     async function refreshAll() {
         try {
-            await Promise.allSettled([updateStatCards(), updateCharts(), updateSystemInfo()]);
+            await Promise.allSettled([updateStatCards(), updateCharts(), updateSystemInfo(), updateInsights()]);
             document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
         } catch {
             // Silently handle refresh errors

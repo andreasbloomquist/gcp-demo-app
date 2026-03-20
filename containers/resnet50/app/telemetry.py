@@ -6,6 +6,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -42,7 +43,13 @@ def setup_telemetry(app) -> tuple:
         OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True),
         export_interval_millis=10000,
     )
-    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    latency_view = View(
+        instrument_name="ml.inference.latency",
+        aggregation=ExplicitBucketHistogramAggregation(
+            boundaries=[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 10.0]
+        ),
+    )
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader], views=[latency_view])
     metrics.set_meter_provider(meter_provider)
     meter = metrics.get_meter(service_name)
 
